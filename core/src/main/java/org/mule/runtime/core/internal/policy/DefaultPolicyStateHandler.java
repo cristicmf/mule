@@ -12,7 +12,7 @@ import org.mule.runtime.api.util.MultiMap;
 import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.policy.PolicyStateId;
-import org.mule.runtime.core.api.processor.Processor;
+import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.privileged.event.BaseEventContext;
 
 import java.util.HashMap;
@@ -24,16 +24,19 @@ public class DefaultPolicyStateHandler implements PolicyStateHandler {
 
   protected MultiMap<String, PolicyStateId> policyStateIdsByExecutionIdentifier = new MultiMap<>();
   protected Map<PolicyStateId, CoreEvent> stateMap = new HashMap<>();
-  protected Map<String, Processor> nextOperationMap = new HashMap<>();
+  protected Map<String, ReactiveProcessor> nextOperationMap = new HashMap<>();
 
-  public synchronized void updateNextOperation(String identifier, Processor nextOperation) {
+  @Override
+  public synchronized void updateNextOperation(String identifier, ReactiveProcessor nextOperation) {
     nextOperationMap.put(identifier, nextOperation);
   }
 
-  public synchronized Processor retrieveNextOperation(String identifier) {
+  @Override
+  public synchronized ReactiveProcessor retrieveNextOperation(String identifier) {
     return nextOperationMap.get(identifier);
   }
 
+  @Override
   public Optional<CoreEvent> getLatestState(PolicyStateId identifier) {
     final CoreEvent state;
     synchronized (this) {
@@ -42,6 +45,7 @@ public class DefaultPolicyStateHandler implements PolicyStateHandler {
     return ofNullable(state);
   }
 
+  @Override
   public void updateState(PolicyStateId identifier, CoreEvent lastStateEvent) {
     ((BaseEventContext) lastStateEvent.getContext()).getRootContext()
         .onTerminated((response, throwable) -> destroyState(identifier.getExecutionIdentifier()));
@@ -51,6 +55,7 @@ public class DefaultPolicyStateHandler implements PolicyStateHandler {
     }
   }
 
+  @Override
   public synchronized void destroyState(String identifier) {
     List<PolicyStateId> policyStateIds = policyStateIdsByExecutionIdentifier.removeAll(identifier);
     if (policyStateIds != null) {

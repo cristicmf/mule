@@ -7,7 +7,6 @@
 package org.mule.runtime.core.internal.policy;
 
 import static org.mule.runtime.api.message.Message.of;
-import static org.mule.runtime.core.privileged.processor.MessageProcessors.processToApply;
 import static reactor.core.publisher.Flux.from;
 import static reactor.core.publisher.Mono.just;
 
@@ -42,7 +41,7 @@ import org.reactivestreams.Publisher;
  * the policy chain execution to the set of parameters that the success response function or the failure response function will be
  * used to execute.
  */
-public class SourcePolicyProcessor implements Processor {
+public class SourcePolicyProcessor implements ReactiveProcessor {
 
   private final Policy policy;
   private final PolicyStateHandler policyStateHandler;
@@ -73,11 +72,6 @@ public class SourcePolicyProcessor implements Processor {
    * @throws MuleException
    */
   @Override
-  public CoreEvent process(CoreEvent sourceEvent) throws MuleException {
-    return processToApply(sourceEvent, this);
-  }
-
-  @Override
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
     return from(publisher)
         .cast(PrivilegedEvent.class)
@@ -94,13 +88,8 @@ public class SourcePolicyProcessor implements Processor {
         });
   }
 
-  private Processor buildSourceExecutionWithPolicyFunction(PolicyStateId policyStateId, PrivilegedEvent sourceEvent) {
-    return new Processor() {
-
-      @Override
-      public CoreEvent process(CoreEvent event) throws MuleException {
-        return processToApply(event, this);
-      }
+  private ReactiveProcessor buildSourceExecutionWithPolicyFunction(PolicyStateId policyStateId, PrivilegedEvent sourceEvent) {
+    return new ReactiveProcessor() {
 
       @Override
       public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
