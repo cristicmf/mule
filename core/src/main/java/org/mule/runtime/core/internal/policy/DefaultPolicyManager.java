@@ -64,6 +64,9 @@ public class DefaultPolicyManager implements PolicyManager, Initialisable, Dispo
   @Inject
   private PolicyStateHandler policyStateHandler;
 
+  @Inject
+  private PolicyNextChaining policyNextChaining;
+
   private final AtomicBoolean isPoliciesAvailable = new AtomicBoolean(false);
 
   private final Cache<String, SourcePolicy> noPolicySourceInstances =

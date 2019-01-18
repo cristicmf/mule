@@ -63,6 +63,9 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
   private PolicyStateHandler policyStateHandler;
 
   @Inject
+  private PolicyNextChaining policyNextChaining;
+
+  @Inject
   private MuleContext muleContext;
 
   private PolicyNotificationHelper notificationHelper;
@@ -97,7 +100,7 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
                                                    coreEvent.getMessage(), muleContext.getConfiguration().getId()))
         .flatMap(event -> {
           PolicyStateId policyStateId = stateIdFactory.create(event);
-          ReactiveProcessor nextOperation = policyStateHandler.retrieveNextOperation(policyStateId.getExecutionIdentifier());
+          ReactiveProcessor nextOperation = policyNextChaining.retrieveNextOperation(policyStateId.getExecutionIdentifier());
 
           if (nextOperation == null) {
             return error(new MuleRuntimeException(createStaticMessage("There's no next operation configured for event context id "

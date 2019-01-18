@@ -24,16 +24,17 @@ public class DefaultPolicyStateHandler implements PolicyStateHandler {
 
   protected MultiMap<String, PolicyStateId> policyStateIdsByExecutionIdentifier = new MultiMap<>();
   protected Map<PolicyStateId, CoreEvent> stateMap = new HashMap<>();
-  protected Map<String, ReactiveProcessor> nextOperationMap = new HashMap<>();
 
   @Override
+  @Override
   public synchronized void updateNextOperation(String identifier, ReactiveProcessor nextOperation) {
-    nextOperationMap.put(identifier, nextOperation);
+    throw new UnsupportedOperationException("Use 'PolicyNextChaining' instead.");
   }
 
   @Override
+  @Override
   public synchronized ReactiveProcessor retrieveNextOperation(String identifier) {
-    return nextOperationMap.get(identifier);
+    throw new UnsupportedOperationException("Use 'PolicyNextChaining' instead.");
   }
 
   @Override
@@ -61,7 +62,6 @@ public class DefaultPolicyStateHandler implements PolicyStateHandler {
     if (policyStateIds != null) {
       policyStateIds.forEach(stateMap::remove);
     }
-    nextOperationMap.remove(identifier);
   }
 
 }

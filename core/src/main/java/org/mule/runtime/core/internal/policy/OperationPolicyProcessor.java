@@ -51,15 +51,20 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
 
   private final Policy policy;
   private final PolicyStateHandler policyStateHandler;
+  private final PolicyNextChaining policyNextChaining;
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
   private final ReactiveProcessor nextProcessor;
   private final PolicyStateIdFactory stateIdFactory;
 
+  // Force the reference to be kept until this processor is GC'd. On 4.1.x, this is when the event is finished.
+  private ReactiveProcessor nextOperationCall;
+
   public OperationPolicyProcessor(Policy policy,
-                                  PolicyStateHandler policyStateHandler,
+                                  PolicyStateHandler policyStateHandler, PolicyNextChaining policyNextChaining,
                                   ReactiveProcessor nextProcessor) {
     this.policy = policy;
     this.policyStateHandler = policyStateHandler;
+    this.policyNextChaining = policyNextChaining;
     this.nextProcessor = nextProcessor;
     this.stateIdFactory = new PolicyStateIdFactory(policy.getPolicyId());
   }
@@ -80,9 +85,8 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
           PolicyStateId policyStateId = stateIdFactory.create(operationEvent);
           PrivilegedEvent variablesProviderEvent = variablesProvider(operationEvent, policyStateId);
           PrivilegedEvent policyEvent = policyEventConverter.createEvent(operationEvent, variablesProviderEvent);
-          ReactiveProcessor operationCall =
-              buildOperationExecutionWithPolicyFunction(nextProcessor, operationEvent, policyStateId);
-          policyStateHandler.updateNextOperation(policyStateId.getExecutionIdentifier(), operationCall);
+          nextOperationCall = buildOperationExecutionWithPolicyFunction(nextProcessor, operationEvent, policyStateId);
+          policyStateHandler.updateNextOperation(policyStateId.getExecutionIdentifier(), nextOperationCall);
           return executePolicyChain(operationEvent, policyStateId, policyEvent);
         });
   }

@@ -45,20 +45,26 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
 
   private final Policy policy;
   private final PolicyStateHandler policyStateHandler;
+  private final PolicyNextChaining policyNextChaining;
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
   private final ReactiveProcessor nextProcessor;
   private final PolicyStateIdFactory stateIdFactory;
+
+  // Force the reference to be kept until this processor is GC'd. On 4.1.x, this is when the event is finished.
+  private Processor nextOperationCall;
 
   /**
    * Creates a new {@code DefaultSourcePolicy}.
    *
    * @param policy the policy to execute before and after the source.
    * @param policyStateHandler the state handler for the policy.
+   * @param policyNextChaining the object in charge of hooking the corresponding target for the {@code execute-next} processor.
    * @param nextProcessor the next-operation processor implementation, it may be another policy or the flow execution.
    */
-  public SourcePolicyProcessor(Policy policy, PolicyStateHandler policyStateHandler, ReactiveProcessor nextProcessor) {
+  public SourcePolicyProcessor(Policy policy, PolicyStateHandler policyStateHandler, PolicyNextChaining policyNextChaining, ReactiveProcessor nextProcessor) {
     this.policy = policy;
     this.policyStateHandler = policyStateHandler;
+    this.policyNextChaining = policyNextChaining;
     this.nextProcessor = nextProcessor;
     this.stateIdFactory = new PolicyStateIdFactory(policy.getPolicyId());
   }
@@ -77,8 +83,8 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
         .cast(PrivilegedEvent.class)
         .flatMap(sourceEvent -> {
           PolicyStateId policyStateId = stateIdFactory.create(sourceEvent);
-          policyStateHandler.updateNextOperation(policyStateId.getExecutionIdentifier(),
-                                                 buildSourceExecutionWithPolicyFunction(policyStateId, sourceEvent));
+          nextOperationCall = buildSourceExecutionWithPolicyFunction(policyStateId, sourceEvent);
+          policyStateHandler.updateNextOperation(policyStateId.getExecutionIdentifier(), nextOperationCall);
           return just(sourceEvent)
               .map(event -> policyEventConverter.createEvent(event, noVariablesEvent(event)))
               .cast(CoreEvent.class)

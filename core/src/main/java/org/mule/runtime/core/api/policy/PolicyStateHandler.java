@@ -14,10 +14,10 @@ import java.util.Optional;
 
 /**
  * State handler for policies execution.
- *
+ * <p>
  * Keeps track of the operation associated with a certain context of execution. Such context of execution is defined by the unique
  * identifier of the generated {@link CoreEvent}.
- *
+ * <p>
  * Implementations will be executed concurrently but always using different identifiers. There will be no concurrent invocation
  * for the same identifier.
  *
