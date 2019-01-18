@@ -37,13 +37,15 @@ import org.mule.runtime.core.internal.policy.PolicyNotificationHelper;
 import org.mule.runtime.core.privileged.event.BaseEventContext;
 import org.mule.runtime.core.privileged.processor.chain.MessageProcessorChain;
 
+import org.reactivestreams.Publisher;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
 import javax.inject.Inject;
 
-import org.reactivestreams.Publisher;
+import reactor.core.publisher.Flux;
 
 /**
  * Policy chain for handling the message processor associated to a policy.
@@ -115,7 +117,7 @@ public class PolicyChain extends AbstractComponent
 
   @Override
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
-    return from(publisher)
+    return Flux.from(publisher)
         .flatMap(event -> {
           pushBeforeNextFlowStackElement()
               .andThen(req -> ((BaseEventContext) req.getContext())

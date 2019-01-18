@@ -27,6 +27,7 @@ import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.policy.Policy;
 import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.processor.Processor;
+import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.privileged.event.DefaultMuleSession;
 import org.mule.runtime.core.privileged.event.PrivilegedEvent;
 import org.mule.tck.junit4.AbstractMuleTestCase;
@@ -55,7 +56,7 @@ public abstract class AbstractPolicyProcessorTestCase extends AbstractMuleTestCa
   protected PolicyNextChaining policyNextChaining;
   protected CoreEvent initialEvent;
   protected String executionId;
-  protected Processor policyProcessor;
+  protected ReactiveProcessor policyProcessor;
   protected ArgumentCaptor<Publisher> eventCaptor = ArgumentCaptor.forClass(Publisher.class);
   private final FlowConstruct mockFlowConstruct = mock(FlowConstruct.class, RETURNS_DEEP_STUBS);
 
@@ -71,7 +72,7 @@ public abstract class AbstractPolicyProcessorTestCase extends AbstractMuleTestCa
     policyProcessor = getProcessor();
   }
 
-  protected abstract Processor getProcessor();
+  protected abstract ReactiveProcessor getProcessor();
 
   @Test
   public void variablesAddedInNextProcessorNotPropagated() throws MuleException {

@@ -124,6 +124,7 @@ import org.mule.runtime.core.internal.management.stats.DefaultProcessingTimeWatc
 import org.mule.runtime.core.internal.metadata.MuleMetadataService;
 import org.mule.runtime.core.internal.policy.DefaultPolicyManager;
 import org.mule.runtime.core.internal.policy.DefaultPolicyStateHandler;
+import org.mule.runtime.core.internal.policy.PolicyNextChaining;
 import org.mule.runtime.core.internal.processor.interceptor.DefaultProcessorInterceptorManager;
 import org.mule.runtime.core.internal.security.DefaultMuleSecurityManager;
 import org.mule.runtime.core.internal.time.LocalTimeSupplier;

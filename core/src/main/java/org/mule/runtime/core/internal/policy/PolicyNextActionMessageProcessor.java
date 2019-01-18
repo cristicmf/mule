@@ -19,6 +19,7 @@ import static reactor.core.publisher.Mono.from;
 
 import org.mule.runtime.api.component.AbstractComponent;
 import org.mule.runtime.api.component.Component;
+import org.mule.runtime.api.component.TypedComponentIdentifier;
 import org.mule.runtime.api.component.location.ComponentLocation;
 import org.mule.runtime.api.event.EventContext;
 import org.mule.runtime.api.exception.MuleException;
@@ -44,6 +45,7 @@ import org.slf4j.Logger;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 import javax.inject.Inject;
 
@@ -95,6 +97,8 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
 
   @Override
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
+
+
     return from(publisher)
         .doOnNext(coreEvent -> logExecuteNextEvent("Before execute-next", coreEvent.getContext(),
                                                    coreEvent.getMessage(), muleContext.getConfiguration().getId()))
@@ -129,6 +133,12 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
                                                          coreEvent.getContext(), coreEvent.getMessage(),
                                                          this.muleContext.getConfiguration().getId()));
         });
+  }
+
+  private Predicate<? super TypedComponentIdentifier> isPolicy() {
+    // TODO MULE-16344: Use the component type instead
+    return id -> "proxy".equals(id.getIdentifier().getName())
+        && "http-policy".equals(id.getIdentifier().getNamespace());
   }
 
   private Function<MessagingException, MessagingException> resolveMessagingException(Component processor,

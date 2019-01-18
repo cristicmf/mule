@@ -20,6 +20,7 @@ import org.mule.runtime.core.api.policy.PolicyStateId;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.internal.exception.MessagingException;
+import org.mule.runtime.core.internal.message.InternalEvent;
 import org.mule.runtime.core.privileged.event.PrivilegedEvent;
 
 import org.reactivestreams.Publisher;
@@ -48,6 +49,8 @@ import reactor.core.publisher.Mono;
 public class OperationPolicyProcessor implements ReactiveProcessor {
 
   private static final Logger LOGGER = getLogger(OperationPolicyProcessor.class);
+
+  private static final String POLICY_OPERATION_ORIGINAL_EVENT = "policy.operation.originalEvent";
 
   private final Policy policy;
   private final PolicyStateHandler policyStateHandler;
@@ -81,18 +84,25 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
     return from(publisher)
         .cast(PrivilegedEvent.class)
+        .map(operationEvent -> InternalEvent.builder(operationEvent)
+            // TODO use a quickCopy
+            .addInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT + policy.getPolicyId(), operationEvent)
+            .build())
+        .doOnNext(operationEvent -> {
+
+        })
         .flatMap(operationEvent -> {
           PolicyStateId policyStateId = stateIdFactory.create(operationEvent);
           PrivilegedEvent variablesProviderEvent = variablesProvider(operationEvent, policyStateId);
           PrivilegedEvent policyEvent = policyEventConverter.createEvent(operationEvent, variablesProviderEvent);
-          nextOperationCall = buildOperationExecutionWithPolicyFunction(nextProcessor, operationEvent, policyStateId);
-          policyStateHandler.updateNextOperation(policyStateId.getExecutionIdentifier(), nextOperationCall);
+          nextOperationCall = buildOperationExecutionWithPolicyFunction(policyStateId);
+          policyNextChaining.updateNextOperation(policyStateId.getExecutionIdentifier(), nextOperationCall);
           return executePolicyChain(operationEvent, policyStateId, policyEvent);
         });
   }
 
   private void manageError(PolicyStateId policyStateId, PrivilegedEvent operationEvent, MessagingException messagingException) {
-    policyStateHandler.updateState(policyStateId, messagingException.getEvent());
+    saveState(policyStateId, (PrivilegedEvent) messagingException.getEvent());
     PrivilegedEvent newEvent = policyEventConverter.createEvent((PrivilegedEvent) messagingException.getEvent(), operationEvent);
     messagingException.setProcessedEvent(newEvent);
   }
@@ -104,31 +114,36 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
     policyChain.onChainError(t -> manageError(policyStateId, operationEvent, (MessagingException) t));
 
     return just(policyEvent)
-        .doOnNext(event -> logPolicy(event.getContext().getCorrelationId(), policyStateId.getPolicyId(),
+        .doOnNext(event -> logPolicy(event.getContext().getCorrelationId(), policy.getPolicyId(),
                                      () -> getMessageAttributesAsString(event), "Before operation"))
         .cast(CoreEvent.class)
         .transform(policyChain)
         .cast(PrivilegedEvent.class)
-        .doOnNext(policyChainResult -> policyStateHandler.updateState(policyStateId, policyChainResult))
+        .doOnNext(policyChainResult -> saveState(policyStateId, policyChainResult))
         .map(policyChainResult -> policyEventConverter.createEvent(policyChainResult, operationEvent))
-        .doOnNext(event -> logPolicy(event.getContext().getCorrelationId(), policyStateId.getPolicyId(),
+        .doOnNext(event -> logPolicy(event.getContext().getCorrelationId(), policy.getPolicyId(),
                                      () -> getMessageAttributesAsString(event), "After operation"));
   }
 
-  private ReactiveProcessor buildOperationExecutionWithPolicyFunction(ReactiveProcessor nextOperation,
-                                                                      PrivilegedEvent operationEvent,
-                                                                      PolicyStateId policyStateId) {
+  private ReactiveProcessor buildOperationExecutionWithPolicyFunction(PolicyStateId policyStateId) {
     return publisher -> from(publisher)
-        .cast(PrivilegedEvent.class)
-        .flatMap(policyExecuteNextEvent -> {
-          policyStateHandler.updateState(policyStateId, policyExecuteNextEvent);
-          return just(policyExecuteNextEvent)
-              .map(event -> policyEventConverter.createEvent(event, operationEvent))
-              .cast(CoreEvent.class)
-              .transform(nextOperation)
-              .cast(PrivilegedEvent.class)
-              .map(operationResult -> policyEventConverter.createEvent(operationResult, policyExecuteNextEvent));
-        });
+        .map(event -> (CoreEvent) policyEventConverter.createEvent(saveState(policyStateId, (PrivilegedEvent) event),
+                                                                   getOriginalEvent(event)))
+        .transform(nextProcessor)
+        .map(result -> (CoreEvent) policyEventConverter.createEvent((PrivilegedEvent) result, loadState(policyStateId)));
+  }
+
+  private PrivilegedEvent getOriginalEvent(CoreEvent event) {
+    return ((InternalEvent) event).getInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT + policy.getPolicyId());
+  }
+
+  private PrivilegedEvent saveState(PolicyStateId policyStateId, PrivilegedEvent event) {
+    policyStateHandler.updateState(policyStateId, event);
+    return event;
+  }
+
+  private PrivilegedEvent loadState(PolicyStateId policyStateId) {
+    return (PrivilegedEvent) policyStateHandler.getLatestState(policyStateId).get();
   }
 
   private PrivilegedEvent variablesProvider(CoreEvent event, PolicyStateId policyStateId) {

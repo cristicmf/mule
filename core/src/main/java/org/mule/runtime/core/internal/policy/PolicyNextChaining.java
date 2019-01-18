@@ -6,7 +6,7 @@
  */
 package org.mule.runtime.core.internal.policy;
 
-import org.mule.runtime.core.api.processor.Processor;
+import org.mule.runtime.core.api.processor.ReactiveProcessor;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 
@@ -17,17 +17,18 @@ import java.util.Map;
  */
 public class PolicyNextChaining {
 
-  private final Map<String, Processor> nextOperationMap = Caffeine.newBuilder().weakValues().<String, Processor>build().asMap();
+  private final Map<String, ReactiveProcessor> nextOperationMap =
+      Caffeine.newBuilder().weakValues().<String, ReactiveProcessor>build().asMap();
 
-  public void updateNextOperation(String identifier, Processor nextOperation) {
+  public void updateNextOperation(String identifier, ReactiveProcessor nextOperation) {
     nextOperationMap.put(identifier, nextOperation);
   }
 
-  public Processor retrieveNextOperation(String identifier) {
+  public ReactiveProcessor retrieveNextOperation(String identifier) {
     return nextOperationMap.get(identifier);
   }
 
-  public Processor clearNextOperation(String identifier) {
+  public ReactiveProcessor clearNextOperation(String identifier) {
     return nextOperationMap.remove(identifier);
   }
 

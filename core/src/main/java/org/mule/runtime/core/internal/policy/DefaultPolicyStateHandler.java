@@ -12,7 +12,7 @@ import org.mule.runtime.api.util.MultiMap;
 import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.policy.PolicyStateId;
-import org.mule.runtime.core.api.processor.ReactiveProcessor;
+import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.privileged.event.BaseEventContext;
 
 import java.util.HashMap;
@@ -26,14 +26,12 @@ public class DefaultPolicyStateHandler implements PolicyStateHandler {
   protected Map<PolicyStateId, CoreEvent> stateMap = new HashMap<>();
 
   @Override
-  @Override
-  public synchronized void updateNextOperation(String identifier, ReactiveProcessor nextOperation) {
+  public synchronized void updateNextOperation(String identifier, Processor nextOperation) {
     throw new UnsupportedOperationException("Use 'PolicyNextChaining' instead.");
   }
 
   @Override
-  @Override
-  public synchronized ReactiveProcessor retrieveNextOperation(String identifier) {
+  public synchronized Processor retrieveNextOperation(String identifier) {
     throw new UnsupportedOperationException("Use 'PolicyNextChaining' instead.");
   }
 

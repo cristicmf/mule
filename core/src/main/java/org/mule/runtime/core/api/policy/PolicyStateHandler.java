@@ -8,7 +8,7 @@ package org.mule.runtime.core.api.policy;
 
 import org.mule.api.annotation.NoImplement;
 import org.mule.runtime.core.api.event.CoreEvent;
-import org.mule.runtime.core.api.processor.ReactiveProcessor;
+import org.mule.runtime.core.api.processor.Processor;
 
 import java.util.Optional;
 
@@ -32,13 +32,13 @@ public interface PolicyStateHandler {
    * @param executionIdentifier the identifier of the context
    * @param nextOperation the next operation of the policy
    */
-  void updateNextOperation(String executionIdentifier, ReactiveProcessor nextOperation);
+  void updateNextOperation(String executionIdentifier, Processor nextOperation);
 
   /**
    * @param executionIdentifier the identifier of the context
    * @return the next operation for the context.
    */
-  ReactiveProcessor retrieveNextOperation(String executionIdentifier);
+  Processor retrieveNextOperation(String executionIdentifier);
 
   /**
    * Frees resources associated with the given context identifier

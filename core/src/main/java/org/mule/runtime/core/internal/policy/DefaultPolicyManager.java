@@ -192,8 +192,8 @@ public class DefaultPolicyManager implements PolicyManager, Initialisable, Dispo
 
   @Override
   public void initialise() throws InitialisationException {
-    operationPolicyProcessorFactory = new DefaultOperationPolicyProcessorFactory(policyStateHandler);
-    sourcePolicyProcessorFactory = new DefaultSourcePolicyProcessorFactory(policyStateHandler);
+    operationPolicyProcessorFactory = new DefaultOperationPolicyProcessorFactory(policyStateHandler, policyNextChaining);
+    sourcePolicyProcessorFactory = new DefaultSourcePolicyProcessorFactory(policyStateHandler, policyNextChaining);
 
     policyProvider = registry.lookupByType(PolicyProvider.class).orElse(new NullPolicyProvider());
 
