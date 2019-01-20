@@ -27,7 +27,6 @@ import org.mule.runtime.api.notification.PolicyNotificationListener;
 import org.mule.runtime.api.service.ServiceRepository;
 import org.mule.runtime.core.api.MuleContext;
 import org.mule.runtime.core.api.context.notification.MuleContextListener;
-import org.mule.runtime.core.api.policy.DefaultPolicyInstance;
 import org.mule.runtime.core.api.policy.Policy;
 import org.mule.runtime.core.api.policy.PolicyInstance;
 import org.mule.runtime.core.api.policy.PolicyParametrization;
@@ -161,7 +160,7 @@ public class DefaultApplicationPolicyInstance implements ApplicationPolicyInstan
   }
 
   private void initPolicyInstance() throws InitialisationException {
-    policyInstance = policyContext.getRegistry().lookupByType(DefaultPolicyInstance.class).get();
+    policyInstance = policyContext.getRegistry().lookupByType(PolicyInstance.class).get();
   }
 
   @Override

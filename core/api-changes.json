@@ -194,6 +194,14 @@
           "classSimpleName": "RequestReplyReplierMessageProcessor",
           "elementKind": "interface",
           "justification": "deprecated and not used anymore"
+        },
+        {
+          "code": "java.class.removed",
+          "old": "class org.mule.runtime.core.api.policy.DefaultPolicyInstance",
+          "package": "org.mule.runtime.core.api.policy",
+          "classSimpleName": "DefaultPolicyInstance",
+          "elementKind": "class",
+          "justification": "Use 'org.mule.runtime.core.api.policy.PolicyInstance' instead."
         }
       ]
     }
