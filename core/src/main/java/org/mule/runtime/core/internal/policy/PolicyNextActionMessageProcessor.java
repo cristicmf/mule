@@ -10,12 +10,14 @@ import static java.util.Optional.ofNullable;
 import static org.mule.runtime.api.i18n.I18nMessageFactory.createStaticMessage;
 import static org.mule.runtime.api.notification.PolicyNotification.AFTER_NEXT;
 import static org.mule.runtime.api.notification.PolicyNotification.BEFORE_NEXT;
+import static org.mule.runtime.core.internal.event.DefaultEventContext.child;
+import static org.mule.runtime.core.internal.event.EventQuickCopy.quickCopy;
 import static org.mule.runtime.core.privileged.processor.MessageProcessors.processToApply;
-import static org.mule.runtime.core.privileged.processor.MessageProcessors.processWithChildContext;
 import static org.slf4j.LoggerFactory.getLogger;
 import static reactor.core.publisher.Mono.empty;
 import static reactor.core.publisher.Mono.error;
 import static reactor.core.publisher.Mono.from;
+import static reactor.core.publisher.Mono.just;
 
 import org.mule.runtime.api.component.AbstractComponent;
 import org.mule.runtime.api.component.Component;
@@ -45,6 +47,7 @@ import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -144,6 +147,41 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
         })
         .map(result -> (CoreEvent) policyEventConverter.createEvent((PrivilegedEvent) result,
                                                                     loadState((PrivilegedEvent) result)));
+  }
+
+  public static Publisher<CoreEvent> processWithChildContext(CoreEvent event, ReactiveProcessor processor,
+                                                             Optional<ComponentLocation> componentLocation) {
+    BaseEventContext childContext = newChildContext(event, componentLocation);
+    return internalProcessWithChildContext(event, processor, childContext, true, childContext.getResponsePublisher());
+  }
+
+  public static BaseEventContext newChildContext(CoreEvent event, Optional<ComponentLocation> componentLocation) {
+    return child(((BaseEventContext) event.getContext()), componentLocation);
+  }
+
+  private static Publisher<CoreEvent> internalProcessWithChildContext(CoreEvent event, ReactiveProcessor processor,
+                                                                      BaseEventContext child, boolean completeParentOnEmpty,
+                                                                      Publisher<CoreEvent> responsePublisher) {
+    return just(quickCopy(child, event))
+        .transform(processor)
+        .doOnNext(completeSuccessIfNeeded(child, true))
+        .switchIfEmpty(from(responsePublisher))
+        .map(result -> quickCopy(child.getParentContext().get(), result))
+        // .doOnError(MessagingException.class,
+        // me -> me.setProcessedEvent(quickCopy(child.getParentContext().get(), me.getEvent())))
+        .doOnSuccess(result -> {
+          if (result == null && completeParentOnEmpty) {
+            child.getParentContext().get().success();
+          }
+        });
+  }
+
+  public static Consumer<CoreEvent> completeSuccessIfNeeded(EventContext child, boolean complete) {
+    return result -> {
+      if (!((BaseEventContext) child).isComplete() && complete) {
+        ((BaseEventContext) child).success(result);
+      }
+    };
   }
 
   private PrivilegedEvent getOriginalEvent(CoreEvent event) {
