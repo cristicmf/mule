@@ -64,9 +64,6 @@ public class DefaultPolicyManager implements PolicyManager, Initialisable, Dispo
   @Inject
   private PolicyStateHandler policyStateHandler;
 
-  @Inject
-  private PolicyNextChaining policyNextChaining;
-
   private final AtomicBoolean isPoliciesAvailable = new AtomicBoolean(false);
 
   private final Cache<String, SourcePolicy> noPolicySourceInstances =
@@ -192,8 +189,8 @@ public class DefaultPolicyManager implements PolicyManager, Initialisable, Dispo
 
   @Override
   public void initialise() throws InitialisationException {
-    operationPolicyProcessorFactory = new DefaultOperationPolicyProcessorFactory(policyNextChaining);
-    sourcePolicyProcessorFactory = new DefaultSourcePolicyProcessorFactory(policyNextChaining);
+    operationPolicyProcessorFactory = new DefaultOperationPolicyProcessorFactory();
+    sourcePolicyProcessorFactory = new DefaultSourcePolicyProcessorFactory();
 
     policyProvider = registry.lookupByType(PolicyProvider.class).orElse(new NullPolicyProvider());
 

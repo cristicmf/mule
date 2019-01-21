@@ -6,6 +6,7 @@
  */
 package org.mule.runtime.core.internal.policy;
 
+import static org.mule.runtime.core.internal.policy.PolicyNextActionMessageProcessor.POLICY_NEXT_OPERATION;
 import static org.slf4j.LoggerFactory.getLogger;
 import static reactor.core.publisher.Flux.from;
 
@@ -15,7 +16,6 @@ import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.policy.Policy;
 import org.mule.runtime.core.api.policy.PolicyChain;
 import org.mule.runtime.core.api.policy.PolicyStateHandler;
-import org.mule.runtime.core.api.policy.PolicyStateId;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.internal.exception.MessagingException;
@@ -49,15 +49,12 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
   public static final String POLICY_OPERATION_ORIGINAL_EVENT = "policy.operation.originalEvent";
 
   private final Policy policy;
-  private final PolicyNextChaining policyNextChaining;
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
   private final ReactiveProcessor nextProcessor;
   private final PolicyStateIdFactory stateIdFactory;
 
-  public OperationPolicyProcessor(Policy policy, PolicyNextChaining policyNextChaining,
-                                  ReactiveProcessor nextProcessor) {
+  public OperationPolicyProcessor(Policy policy, ReactiveProcessor nextProcessor) {
     this.policy = policy;
-    this.policyNextChaining = policyNextChaining;
     this.nextProcessor = nextProcessor;
     this.stateIdFactory = new PolicyStateIdFactory(policy.getPolicyId());
   }
@@ -79,16 +76,13 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
               .addInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT, operationEvent)
               .build();
 
-          PolicyStateId policyStateId = stateIdFactory.create(eventToUse);
-          PrivilegedEvent variablesProviderEvent = variablesProvider(eventToUse);
-          PrivilegedEvent policyEvent = policyEventConverter.createEvent(eventToUse, variablesProviderEvent);
-          policyNextChaining.updateNextOperation(policyStateId.getExecutionIdentifier(), nextProcessor);
-          return policyEvent;
+          return policyEventConverter.createEvent(eventToUse, variablesProvider(eventToUse));
         })
         .doOnNext(event -> logPolicy(event.getContext().getCorrelationId(), policy.getPolicyId(),
                                      () -> getMessageAttributesAsString(event), "Before operation"))
         .cast(CoreEvent.class)
         .transform(policy.getPolicyChain().onChainError(t -> manageError((MessagingException) t)))
+        .subscriberContext(ctx -> ctx.put(POLICY_NEXT_OPERATION, nextProcessor))
         .cast(PrivilegedEvent.class)
         .doOnNext(policyChainResult -> saveState(policyChainResult))
         .map(policyChainResult -> policyEventConverter.createEvent(policyChainResult, ((InternalEvent) policyChainResult)

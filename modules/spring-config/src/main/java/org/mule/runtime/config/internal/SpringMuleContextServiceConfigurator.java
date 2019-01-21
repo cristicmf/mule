@@ -124,7 +124,6 @@ import org.mule.runtime.core.internal.management.stats.DefaultProcessingTimeWatc
 import org.mule.runtime.core.internal.metadata.MuleMetadataService;
 import org.mule.runtime.core.internal.policy.DefaultPolicyManager;
 import org.mule.runtime.core.internal.policy.DefaultPolicyStateHandler;
-import org.mule.runtime.core.internal.policy.PolicyNextChaining;
 import org.mule.runtime.core.internal.processor.interceptor.DefaultProcessorInterceptorManager;
 import org.mule.runtime.core.internal.security.DefaultMuleSecurityManager;
 import org.mule.runtime.core.internal.time.LocalTimeSupplier;
@@ -177,8 +176,6 @@ class SpringMuleContextServiceConfigurator {
   private final ResourceLocator resourceLocator;
   private org.mule.runtime.core.internal.registry.Registry originalRegistry;
 
-  private static final String OBJECT_POLICY_NEXT_CHAINING = "_mulePolicyNextChaining";
-
   private static final ImmutableSet<String> APPLICATION_ONLY_SERVICES = ImmutableSet.<String>builder()
       .add(OBJECT_SECURITY_MANAGER)
       .add(OBJECT_DEFAULT_MESSAGE_PROCESSING_MANAGER)
@@ -211,7 +208,6 @@ class SpringMuleContextServiceConfigurator {
       .put(OBJECT_POLICY_MANAGER, getBeanDefinition(DefaultPolicyManager.class))
       .put(INTERCEPTOR_MANAGER_REGISTRY_KEY, getBeanDefinition(DefaultProcessorInterceptorManager.class))
       .put(OBJECT_POLICY_MANAGER_STATE_HANDLER, getBeanDefinition(DefaultPolicyStateHandler.class))
-      .put(OBJECT_POLICY_NEXT_CHAINING, getBeanDefinition(PolicyNextChaining.class))
       .put(OBJECT_NOTIFICATION_MANAGER, createNotificationManagerBeanDefinition())
       .put(OBJECT_NOTIFICATION_DISPATCHER, getBeanDefinition(DefaultNotificationDispatcher.class))
       .put(NotificationListenerRegistry.REGISTRY_KEY, getBeanDefinition(DefaultNotificationListenerRegistry.class))

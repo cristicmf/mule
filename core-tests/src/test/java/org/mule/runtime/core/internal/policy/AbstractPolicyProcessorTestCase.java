@@ -51,7 +51,6 @@ public abstract class AbstractPolicyProcessorTestCase extends AbstractMuleTestCa
   private final MuleContext muleContext = mockContextWithServices();
   protected Policy policy = mock(Policy.class, RETURNS_DEEP_STUBS);
   protected Processor flowProcessor = mock(Processor.class);
-  protected PolicyNextChaining policyNextChaining;
   protected CoreEvent initialEvent;
   protected String executionId;
   protected ReactiveProcessor policyProcessor;
@@ -65,7 +64,6 @@ public abstract class AbstractPolicyProcessorTestCase extends AbstractMuleTestCa
     executionId = randomUUID().toString();
     initialEvent = createTestEvent();
 
-    policyNextChaining = new PolicyNextChaining();
     policyProcessor = getProcessor();
   }
 

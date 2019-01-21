@@ -47,6 +47,7 @@ import java.util.function.Predicate;
 import javax.inject.Inject;
 
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 /**
  * Next-operation message processor implementation.
@@ -60,8 +61,7 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
 
   private static final Logger LOGGER = getLogger(PolicyNextActionMessageProcessor.class);
 
-  @Inject
-  private PolicyNextChaining policyNextChaining;
+  public static final String POLICY_NEXT_OPERATION = "policy.nextOperation";
 
   @Inject
   private MuleContext muleContext;
@@ -100,39 +100,47 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
                                                    coreEvent.getMessage(), muleContext.getConfiguration().getId()))
         .map(event -> (CoreEvent) policyEventConverter.createEvent(saveState((PrivilegedEvent) event),
                                                                    getOriginalEvent(event)))
+        .doOnNext(a -> {
+        })
         .flatMap(event -> {
-          PolicyStateId policyStateId = stateIdFactory.create(event);
-          ReactiveProcessor nextOperation = policyNextChaining.retrieveNextOperation(policyStateId.getExecutionIdentifier());
+          return Mono.subscriberContext().flatMap(ctx -> {
+            PolicyStateId policyStateId = stateIdFactory.create(event);
 
-          if (nextOperation == null) {
-            return error(new MuleRuntimeException(createStaticMessage("There's no next operation configured for event context id "
-                + policyStateId.getExecutionIdentifier())));
-          }
+            ReactiveProcessor nextOperation = ctx.get(POLICY_NEXT_OPERATION);
 
-          popBeforeNextFlowFlowStackElement().accept(event);
-          notificationHelper.notification(BEFORE_NEXT).accept(event);
+            if (nextOperation == null) {
+              return error(new MuleRuntimeException(createStaticMessage("There's no next operation configured for event context id "
+                  + policyStateId.getExecutionIdentifier())));
+            }
 
-          return just(event)
-              .transform(nextOperation)
-              .doOnSuccess(ev -> {
-                // In the case of multiple policies and error handling, ev may be null,
-                // So use the original event here.
-                notificationHelper.fireNotification(event, null, AFTER_NEXT);
-                pushAfterNextFlowStackElement().accept(event);
-              })
-              .onErrorMap(MessagingException.class, t -> {
-                notificationHelper.fireNotification(t.getEvent(), t, AFTER_NEXT);
-                pushAfterNextFlowStackElement().accept(t.getEvent());
+            popBeforeNextFlowFlowStackElement().accept(event);
+            notificationHelper.notification(BEFORE_NEXT).accept(event);
 
-                for (Entry<String, ?> entry : ((InternalEvent) t.getEvent()).getInternalParameters().entrySet()) {
-                  if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
-                    t.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) t.getEvent(),
-                                                                         (PrivilegedEvent) entry.getValue()));
-                    break;
+            return just(event)
+                .transform(nextOperation)
+                .doOnSuccess(ev -> {
+                  // In the case of multiple policies and error handling, ev may be null,
+                  // So use the original event here.
+                  notificationHelper.fireNotification(event, null, AFTER_NEXT);
+                  pushAfterNextFlowStackElement().accept(event);
+                })
+                .onErrorMap(MessagingException.class, t -> {
+                  notificationHelper.fireNotification(t.getEvent(), t, AFTER_NEXT);
+                  pushAfterNextFlowStackElement().accept(t.getEvent());
+
+                  for (Entry<String, ?> entry : ((InternalEvent) t.getEvent()).getInternalParameters().entrySet()) {
+                    if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
+                      t.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) t.getEvent(),
+                                                                           (PrivilegedEvent) entry.getValue()));
+                      break;
+                    }
                   }
-                }
-                return t;
-              });
+                  return t;
+                });
+          });
+
+
+
         })
         .doOnNext(coreEvent -> logExecuteNextEvent("After execute-next",
                                                    coreEvent.getContext(), coreEvent.getMessage(),

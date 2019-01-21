@@ -7,7 +7,6 @@
 package org.mule.runtime.core.internal.policy;
 
 import static org.hamcrest.core.Is.is;
-import static org.hamcrest.core.IsNull.nullValue;
 import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
@@ -36,7 +35,6 @@ public class DefaultPolicyStateHandlerTestCase extends AbstractMuleTestCase {
   private final InternalEvent eventTestExecutionId2 = mock(InternalEvent.class, RETURNS_DEEP_STUBS);
 
   private final DefaultPolicyStateHandler defaultPolicyStateHandler = new DefaultPolicyStateHandler();
-  private final PolicyNextChaining policyNextChaining = new PolicyNextChaining();
 
   @Test
   public void destroyStateWithNoData() {
@@ -68,7 +66,6 @@ public class DefaultPolicyStateHandlerTestCase extends AbstractMuleTestCase {
     PolicyStateId policyStateExecutionId = new PolicyStateId(TEST_EXECUTION_ID, TEST_POLICY_ID);
     defaultPolicyStateHandler.destroyState(policyStateExecutionId.getExecutionIdentifier());
     assertThat(defaultPolicyStateHandler.getLatestState(policyStateExecutionId).isPresent(), is(false));
-    assertThat(policyNextChaining.retrieveNextOperation(policyStateExecutionId.getExecutionIdentifier()), nullValue());
   }
 
   @Test

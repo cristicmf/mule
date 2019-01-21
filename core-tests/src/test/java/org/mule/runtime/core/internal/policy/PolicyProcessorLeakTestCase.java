@@ -32,7 +32,6 @@ public class PolicyProcessorLeakTestCase extends AbstractMuleTestCase {
 
   private static final int GC_POLLING_TIMEOUT = 10000;
 
-  private final PolicyNextChaining policyNextChaining = new PolicyNextChaining();
   private Policy policy;
 
   @Before
@@ -52,8 +51,7 @@ public class PolicyProcessorLeakTestCase extends AbstractMuleTestCase {
   public void sourceNextOperationRefCleared() throws MuleException {
     Processor nextProcessor = new TestProcessor();
     final PhantomReference<Processor> processorRef = new PhantomReference<>(nextProcessor, new ReferenceQueue<>());
-    SourcePolicyProcessor policyProcessor =
-        new SourcePolicyProcessor(policy, policyNextChaining, nextProcessor);
+    SourcePolicyProcessor policyProcessor = new SourcePolicyProcessor(policy, nextProcessor);
 
     final CoreEvent event = testEvent();
     try {
@@ -72,8 +70,7 @@ public class PolicyProcessorLeakTestCase extends AbstractMuleTestCase {
   public void operationNextOperationRefCleared() throws MuleException {
     Processor nextProcessor = new TestProcessor();
     final PhantomReference<Processor> processorRef = new PhantomReference<>(nextProcessor, new ReferenceQueue<>());
-    OperationPolicyProcessor policyProcessor =
-        new OperationPolicyProcessor(policy, policyNextChaining, nextProcessor);
+    OperationPolicyProcessor policyProcessor = new OperationPolicyProcessor(policy, nextProcessor);
 
     final CoreEvent event = testEvent();
     try {

@@ -7,6 +7,7 @@
 package org.mule.runtime.core.internal.policy;
 
 import static org.mule.runtime.api.message.Message.of;
+import static org.mule.runtime.core.internal.policy.PolicyNextActionMessageProcessor.POLICY_NEXT_OPERATION;
 import static reactor.core.publisher.Flux.from;
 
 import org.mule.runtime.api.exception.MuleException;
@@ -48,7 +49,6 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
   public static final String POLICY_STATE_EVENT = "policy.source.beforeNextEvent";
 
   private final Policy policy;
-  private final PolicyNextChaining policyNextChaining;
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
   private final ReactiveProcessor nextProcessor;
   private final PolicyStateIdFactory stateIdFactory;
@@ -57,12 +57,10 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
    * Creates a new {@code DefaultSourcePolicy}.
    *
    * @param policy the policy to execute before and after the source.
-   * @param policyNextChaining the object in charge of hooking the corresponding target for the {@code execute-next} processor.
    * @param nextProcessor the next-operation processor implementation, it may be another policy or the flow execution.
    */
-  public SourcePolicyProcessor(Policy policy, PolicyNextChaining policyNextChaining, ReactiveProcessor nextProcessor) {
+  public SourcePolicyProcessor(Policy policy, ReactiveProcessor nextProcessor) {
     this.policy = policy;
-    this.policyNextChaining = policyNextChaining;
     this.nextProcessor = nextProcessor;
     this.stateIdFactory = new PolicyStateIdFactory(policy.getPolicyId());
   }
@@ -79,14 +77,13 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
     return from(publisher)
         .cast(PrivilegedEvent.class)
-        .map(sourceEvent -> InternalEvent.builder(sourceEvent)
-            // TODO use a quickCopy
-            .addInternalParameter(POLICY_SOURCE_ORIGINAL_EVENT, sourceEvent)
-            .build())
-        .doOnNext(sourceEvent -> {
-          policyNextChaining.updateNextOperation(stateIdFactory.create(sourceEvent).getExecutionIdentifier(), nextProcessor);
+        .map(sourceEvent -> {
+          InternalEvent event = InternalEvent.builder(sourceEvent)
+              // TODO use a quickCopy
+              .addInternalParameter(POLICY_SOURCE_ORIGINAL_EVENT, sourceEvent)
+              .build();
+          return policyEventConverter.createEvent(event, noVariablesEvent(event));
         })
-        .map(event -> policyEventConverter.createEvent(event, noVariablesEvent(event)))
         .cast(CoreEvent.class)
         .transform(policy.getPolicyChain().onChainError(t -> {
           MessagingException me = (MessagingException) t;
@@ -99,6 +96,7 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
             }
           }
         }))
+        .subscriberContext(ctx -> ctx.put(POLICY_NEXT_OPERATION, nextProcessor))
         .cast(PrivilegedEvent.class)
         .map(event -> policyEventConverter.createEvent(event, getOriginalEvent(event)));
   }
