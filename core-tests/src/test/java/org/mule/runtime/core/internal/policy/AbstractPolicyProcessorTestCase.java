@@ -25,7 +25,6 @@ import org.mule.runtime.core.api.MuleContext;
 import org.mule.runtime.core.api.construct.FlowConstruct;
 import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.policy.Policy;
-import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.privileged.event.DefaultMuleSession;
@@ -52,7 +51,6 @@ public abstract class AbstractPolicyProcessorTestCase extends AbstractMuleTestCa
   private final MuleContext muleContext = mockContextWithServices();
   protected Policy policy = mock(Policy.class, RETURNS_DEEP_STUBS);
   protected Processor flowProcessor = mock(Processor.class);
-  protected PolicyStateHandler policyStateHandler;
   protected PolicyNextChaining policyNextChaining;
   protected CoreEvent initialEvent;
   protected String executionId;
@@ -67,7 +65,6 @@ public abstract class AbstractPolicyProcessorTestCase extends AbstractMuleTestCa
     executionId = randomUUID().toString();
     initialEvent = createTestEvent();
 
-    policyStateHandler = new DefaultPolicyStateHandler();
     policyNextChaining = new PolicyNextChaining();
     policyProcessor = getProcessor();
   }

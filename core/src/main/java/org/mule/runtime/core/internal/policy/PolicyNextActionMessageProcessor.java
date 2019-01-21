@@ -6,17 +6,12 @@
  */
 package org.mule.runtime.core.internal.policy;
 
-import static java.util.Optional.ofNullable;
 import static org.mule.runtime.api.i18n.I18nMessageFactory.createStaticMessage;
 import static org.mule.runtime.api.notification.PolicyNotification.AFTER_NEXT;
 import static org.mule.runtime.api.notification.PolicyNotification.BEFORE_NEXT;
-import static org.mule.runtime.core.internal.event.DefaultEventContext.child;
-import static org.mule.runtime.core.internal.event.EventQuickCopy.quickCopy;
 import static org.mule.runtime.core.privileged.processor.MessageProcessors.processToApply;
 import static org.slf4j.LoggerFactory.getLogger;
-import static reactor.core.publisher.Mono.empty;
 import static reactor.core.publisher.Mono.error;
-import static reactor.core.publisher.Mono.from;
 import static reactor.core.publisher.Mono.just;
 
 import org.mule.runtime.api.component.AbstractComponent;
@@ -32,7 +27,6 @@ import org.mule.runtime.api.message.Message;
 import org.mule.runtime.core.api.MuleContext;
 import org.mule.runtime.core.api.context.notification.FlowStackElement;
 import org.mule.runtime.core.api.event.CoreEvent;
-import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.policy.PolicyStateId;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
@@ -40,14 +34,12 @@ import org.mule.runtime.core.internal.context.notification.DefaultFlowCallStack;
 import org.mule.runtime.core.internal.exception.MessagingException;
 import org.mule.runtime.core.internal.message.InternalEvent;
 import org.mule.runtime.core.internal.util.MessagingExceptionResolver;
-import org.mule.runtime.core.privileged.event.BaseEventContext;
 import org.mule.runtime.core.privileged.event.PrivilegedEvent;
 
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -67,9 +59,6 @@ import reactor.core.publisher.Flux;
 public class PolicyNextActionMessageProcessor extends AbstractComponent implements Processor, Initialisable {
 
   private static final Logger LOGGER = getLogger(PolicyNextActionMessageProcessor.class);
-
-  @Inject
-  private PolicyStateHandler policyStateHandler;
 
   @Inject
   private PolicyNextChaining policyNextChaining;
@@ -123,10 +112,18 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
           popBeforeNextFlowFlowStackElement().accept(event);
           notificationHelper.notification(BEFORE_NEXT).accept(event);
 
-          return from(processWithChildContext(event, nextOperation, ofNullable(getLocation())))
-              .doOnSuccessOrError(notificationHelper.successOrErrorNotification(AFTER_NEXT)
-                  .andThen((ev, t) -> pushAfterNextFlowStackElement().accept(event)))
-              .onErrorResume(MessagingException.class, t -> {
+          return just(event)
+              .transform(nextOperation)
+              .doOnSuccess(ev -> {
+                // In the case of multiple policies and error handling, ev may be null,
+                // So use the original event here.
+                notificationHelper.fireNotification(event, null, AFTER_NEXT);
+                pushAfterNextFlowStackElement().accept(event);
+              })
+              .onErrorMap(MessagingException.class, t -> {
+                notificationHelper.fireNotification(t.getEvent(), t, AFTER_NEXT);
+                pushAfterNextFlowStackElement().accept(t.getEvent());
+
                 for (Entry<String, ?> entry : ((InternalEvent) t.getEvent()).getInternalParameters().entrySet()) {
                   if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
                     t.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) t.getEvent(),
@@ -134,54 +131,14 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
                     break;
                   }
                 }
-
-                // Given we've used child context to ensure AFTER_NEXT notifications are fired at exactly the right time we need
-                // to propagate the error to parent context manually.
-                ((BaseEventContext) event.getContext())
-                    .error(resolveMessagingException(t.getFailingComponent(), muleContext).apply(t));
-                return empty();
-              })
-              .doOnNext(coreEvent -> logExecuteNextEvent("After execute-next",
-                                                         coreEvent.getContext(), coreEvent.getMessage(),
-                                                         this.muleContext.getConfiguration().getId()));
+                return t;
+              });
         })
+        .doOnNext(coreEvent -> logExecuteNextEvent("After execute-next",
+                                                   coreEvent.getContext(), coreEvent.getMessage(),
+                                                   this.muleContext.getConfiguration().getId()))
         .map(result -> (CoreEvent) policyEventConverter.createEvent((PrivilegedEvent) result,
                                                                     loadState((PrivilegedEvent) result)));
-  }
-
-  public static Publisher<CoreEvent> processWithChildContext(CoreEvent event, ReactiveProcessor processor,
-                                                             Optional<ComponentLocation> componentLocation) {
-    BaseEventContext childContext = newChildContext(event, componentLocation);
-    return internalProcessWithChildContext(event, processor, childContext, true, childContext.getResponsePublisher());
-  }
-
-  public static BaseEventContext newChildContext(CoreEvent event, Optional<ComponentLocation> componentLocation) {
-    return child(((BaseEventContext) event.getContext()), componentLocation);
-  }
-
-  private static Publisher<CoreEvent> internalProcessWithChildContext(CoreEvent event, ReactiveProcessor processor,
-                                                                      BaseEventContext child, boolean completeParentOnEmpty,
-                                                                      Publisher<CoreEvent> responsePublisher) {
-    return just(quickCopy(child, event))
-        .transform(processor)
-        .doOnNext(completeSuccessIfNeeded(child, true))
-        .switchIfEmpty(from(responsePublisher))
-        .map(result -> quickCopy(child.getParentContext().get(), result))
-        // .doOnError(MessagingException.class,
-        // me -> me.setProcessedEvent(quickCopy(child.getParentContext().get(), me.getEvent())))
-        .doOnSuccess(result -> {
-          if (result == null && completeParentOnEmpty) {
-            child.getParentContext().get().success();
-          }
-        });
-  }
-
-  public static Consumer<CoreEvent> completeSuccessIfNeeded(EventContext child, boolean complete) {
-    return result -> {
-      if (!((BaseEventContext) child).isComplete() && complete) {
-        ((BaseEventContext) child).success(result);
-      }
-    };
   }
 
   private PrivilegedEvent getOriginalEvent(CoreEvent event) {

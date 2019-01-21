@@ -23,7 +23,7 @@ public class SourcePolicyProcessorTestCase extends AbstractPolicyProcessorTestCa
 
   @Override
   protected ReactiveProcessor getProcessor() {
-    return new SourcePolicyProcessor(policy, policyStateHandler, policyNextChaining, flowProcessor);
+    return new SourcePolicyProcessor(policy, policyNextChaining, flowProcessor);
   }
 
   @Test

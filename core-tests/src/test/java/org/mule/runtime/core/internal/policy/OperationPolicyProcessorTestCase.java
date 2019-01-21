@@ -15,6 +15,6 @@ public class OperationPolicyProcessorTestCase extends AbstractPolicyProcessorTes
   @Override
   protected ReactiveProcessor getProcessor() {
     when(policy.getPolicyId()).thenReturn("id");
-    return new OperationPolicyProcessor(policy, policyStateHandler, policyNextChaining, flowProcessor);
+    return new OperationPolicyProcessor(policy, policyNextChaining, flowProcessor);
   }
 }

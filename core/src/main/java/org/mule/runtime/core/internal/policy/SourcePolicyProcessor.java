@@ -16,10 +16,13 @@ import org.mule.runtime.core.api.policy.PolicyChain;
 import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
+import org.mule.runtime.core.internal.exception.MessagingException;
 import org.mule.runtime.core.internal.message.InternalEvent;
 import org.mule.runtime.core.privileged.event.PrivilegedEvent;
 
 import org.reactivestreams.Publisher;
+
+import java.util.Map.Entry;
 
 /**
  * This class is responsible for the processing of a policy applied to a {@link org.mule.runtime.core.api.source.MessageSource}.
@@ -85,7 +88,17 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
         })
         .map(event -> policyEventConverter.createEvent(event, noVariablesEvent(event)))
         .cast(CoreEvent.class)
-        .transform(policy.getPolicyChain())
+        .transform(policy.getPolicyChain().onChainError(t -> {
+          MessagingException me = (MessagingException) t;
+
+          for (Entry<String, ?> entry : ((InternalEvent) me.getEvent()).getInternalParameters().entrySet()) {
+            if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
+              me.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) me.getEvent(),
+                                                                    (PrivilegedEvent) entry.getValue()));
+              break;
+            }
+          }
+        }))
         .cast(PrivilegedEvent.class)
         .map(event -> policyEventConverter.createEvent(event, getOriginalEvent(event)));
   }
