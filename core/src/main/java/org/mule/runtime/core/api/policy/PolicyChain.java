@@ -150,7 +150,8 @@ public class PolicyChain extends AbstractComponent
     this.propagateMessageTransformations = propagateMessageTransformations;
   }
 
-  public void onChainError(Consumer<Exception> onError) {
+  public PolicyChain onChainError(Consumer<Exception> onError) {
     this.onError = of(onError);
+    return this;
   }
 }

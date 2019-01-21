@@ -106,6 +106,8 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
     return Flux.from(publisher)
         .doOnNext(coreEvent -> logExecuteNextEvent("Before execute-next", coreEvent.getContext(),
                                                    coreEvent.getMessage(), muleContext.getConfiguration().getId()))
+        .map(event -> (CoreEvent) policyEventConverter.createEvent(saveState((PrivilegedEvent) event),
+                                                                   getOriginalEvent(event)))
         .flatMap(event -> {
           PolicyStateId policyStateId = stateIdFactory.create(event);
           ReactiveProcessor nextOperation = policyNextChaining.retrieveNextOperation(policyStateId.getExecutionIdentifier());
@@ -139,7 +141,30 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
               .doOnNext(coreEvent -> logExecuteNextEvent("After execute-next",
                                                          coreEvent.getContext(), coreEvent.getMessage(),
                                                          this.muleContext.getConfiguration().getId()));
-        });
+        })
+        .map(result -> (CoreEvent) policyEventConverter.createEvent((PrivilegedEvent) result,
+                                                                    loadState((PrivilegedEvent) result)));
+  }
+
+  private PrivilegedEvent getOriginalEvent(CoreEvent event) {
+    final PrivilegedEvent operationOriginalEvent =
+        ((InternalEvent) event).getInternalParameter(OperationPolicyProcessor.POLICY_OPERATION_ORIGINAL_EVENT);
+    if (operationOriginalEvent != null) {
+      return operationOriginalEvent;
+    } else {
+      return ((InternalEvent) event).getInternalParameter(SourcePolicyProcessor.POLICY_SOURCE_ORIGINAL_EVENT);
+    }
+  }
+
+  private PrivilegedEvent saveState(PrivilegedEvent event) {
+    return InternalEvent.builder(event)
+        // TODO use a quickCopy
+        .addInternalParameter(SourcePolicyProcessor.POLICY_STATE_EVENT, event)
+        .build();
+  }
+
+  private PrivilegedEvent loadState(PrivilegedEvent event) {
+    return ((InternalEvent) event).getInternalParameter(SourcePolicyProcessor.POLICY_STATE_EVENT);
   }
 
   private Predicate<? super TypedComponentIdentifier> isPolicy() {

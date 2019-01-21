@@ -41,7 +41,7 @@ import org.reactivestreams.Publisher;
  */
 public class SourcePolicyProcessor implements ReactiveProcessor {
 
-  private static final String POLICY_SOURCE_ORIGINAL_EVENT = "policy.source.originalEvent";
+  public static final String POLICY_SOURCE_ORIGINAL_EVENT = "policy.source.originalEvent";
   public static final String POLICY_STATE_EVENT = "policy.source.beforeNextEvent";
 
   private final Policy policy;
@@ -49,9 +49,6 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
   private final ReactiveProcessor nextProcessor;
   private final PolicyStateIdFactory stateIdFactory;
-
-  // Force the reference to be kept until this processor is GC'd. On 4.1.x, this is when the event is finished.
-  private ReactiveProcessor nextOperationCall;
 
   /**
    * Creates a new {@code DefaultSourcePolicy}.
@@ -84,8 +81,7 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
             .addInternalParameter(POLICY_SOURCE_ORIGINAL_EVENT, sourceEvent)
             .build())
         .doOnNext(sourceEvent -> {
-          nextOperationCall = buildSourceExecutionWithPolicyFunction();
-          policyNextChaining.updateNextOperation(stateIdFactory.create(sourceEvent).getExecutionIdentifier(), nextOperationCall);
+          policyNextChaining.updateNextOperation(stateIdFactory.create(sourceEvent).getExecutionIdentifier(), nextProcessor);
         })
         .map(event -> policyEventConverter.createEvent(event, noVariablesEvent(event)))
         .cast(CoreEvent.class)
@@ -94,29 +90,8 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
         .map(event -> policyEventConverter.createEvent(event, getOriginalEvent(event)));
   }
 
-  private ReactiveProcessor buildSourceExecutionWithPolicyFunction() {
-    return publisher -> from(publisher)
-        .map(event -> (CoreEvent) policyEventConverter.createEvent(saveState((PrivilegedEvent) event),
-                                                                   getOriginalEvent(event),
-                                                                   policy.getPolicyChain().isPropagateMessageTransformations()))
-        .transform(nextProcessor)
-        .map(result -> (CoreEvent) policyEventConverter.createEvent((PrivilegedEvent) result,
-                                                                    loadState((PrivilegedEvent) result)));
-  }
-
   private PrivilegedEvent getOriginalEvent(CoreEvent event) {
     return ((InternalEvent) event).getInternalParameter(POLICY_SOURCE_ORIGINAL_EVENT);
-  }
-
-  private PrivilegedEvent saveState(PrivilegedEvent event) {
-    return InternalEvent.builder(event)
-        // TODO use a quickCopy
-        .addInternalParameter(POLICY_STATE_EVENT, event)
-        .build();
-  }
-
-  private PrivilegedEvent loadState(PrivilegedEvent event) {
-    return ((InternalEvent) event).getInternalParameter(POLICY_STATE_EVENT);
   }
 
   private PrivilegedEvent noVariablesEvent(CoreEvent event) {
