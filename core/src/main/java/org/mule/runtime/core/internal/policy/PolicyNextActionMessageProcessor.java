@@ -36,6 +36,7 @@ import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.internal.context.notification.DefaultFlowCallStack;
 import org.mule.runtime.core.internal.exception.MessagingException;
+import org.mule.runtime.core.internal.message.InternalEvent;
 import org.mule.runtime.core.internal.util.MessagingExceptionResolver;
 import org.mule.runtime.core.privileged.event.BaseEventContext;
 import org.mule.runtime.core.privileged.event.PrivilegedEvent;
@@ -43,11 +44,14 @@ import org.mule.runtime.core.privileged.event.PrivilegedEvent;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 
+import java.util.Map.Entry;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 import javax.inject.Inject;
+
+import reactor.core.publisher.Flux;
 
 /**
  * Next-operation message processor implementation.
@@ -99,7 +103,7 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
 
 
-    return from(publisher)
+    return Flux.from(publisher)
         .doOnNext(coreEvent -> logExecuteNextEvent("Before execute-next", coreEvent.getContext(),
                                                    coreEvent.getMessage(), muleContext.getConfiguration().getId()))
         .flatMap(event -> {
@@ -118,10 +122,13 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
               .doOnSuccessOrError(notificationHelper.successOrErrorNotification(AFTER_NEXT)
                   .andThen((ev, t) -> pushAfterNextFlowStackElement().accept(event)))
               .onErrorResume(MessagingException.class, t -> {
-
-                policyStateHandler.getLatestState(policyStateId)
-                    .ifPresent(latestStateEvent -> t.setProcessedEvent(policyEventConverter
-                        .createEvent((PrivilegedEvent) t.getEvent(), (PrivilegedEvent) latestStateEvent)));
+                for (Entry<String, ?> entry : ((InternalEvent) t.getEvent()).getInternalParameters().entrySet()) {
+                  if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
+                    t.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) t.getEvent(),
+                                                                         (PrivilegedEvent) entry.getValue()));
+                    break;
+                  }
+                }
 
                 // Given we've used child context to ensure AFTER_NEXT notifications are fired at exactly the right time we need
                 // to propagate the error to parent context manually.

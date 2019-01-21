@@ -7,7 +7,6 @@
 package org.mule.runtime.core.internal.policy;
 
 import org.mule.runtime.core.api.policy.Policy;
-import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
 
@@ -18,22 +17,19 @@ import org.mule.runtime.core.api.processor.ReactiveProcessor;
  */
 public class DefaultOperationPolicyProcessorFactory implements OperationPolicyProcessorFactory {
 
-  private final PolicyStateHandler policyStateHandler;
   private final PolicyNextChaining policyNextChaining;
 
   /**
    * Creates a new {@link Processor} from an operation {@link Policy}.
    *
-   * @param policyStateHandler the state handler to use for keeping track of the policy chain event modifications.
    * @param policyNextChaining the object in charge of hooking the corresponding target for the {@code execute-next} processor.
    */
-  public DefaultOperationPolicyProcessorFactory(PolicyStateHandler policyStateHandler, PolicyNextChaining policyNextChaining) {
-    this.policyStateHandler = policyStateHandler;
+  public DefaultOperationPolicyProcessorFactory(PolicyNextChaining policyNextChaining) {
     this.policyNextChaining = policyNextChaining;
   }
 
   @Override
   public ReactiveProcessor createOperationPolicy(Policy policy, ReactiveProcessor nextProcessor) {
-    return new OperationPolicyProcessor(policy, policyStateHandler, policyNextChaining, nextProcessor);
+    return new OperationPolicyProcessor(policy, policyNextChaining, nextProcessor);
   }
 }
