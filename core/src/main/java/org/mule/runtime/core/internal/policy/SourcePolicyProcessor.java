@@ -6,8 +6,10 @@
  */
 package org.mule.runtime.core.internal.policy;
 
-import static org.mule.runtime.api.message.Message.of;
+import static java.util.Collections.singletonMap;
+import static org.mule.runtime.core.internal.event.EventQuickCopy.quickCopy;
 import static org.mule.runtime.core.internal.policy.PolicyNextActionMessageProcessor.POLICY_NEXT_OPERATION;
+import static org.mule.runtime.core.internal.policy.PolicyNextActionMessageProcessor.POLICY_STATE_EVENT;
 import static reactor.core.publisher.Flux.from;
 
 import org.mule.runtime.api.exception.MuleException;
@@ -45,7 +47,6 @@ import java.util.Map.Entry;
 public class SourcePolicyProcessor implements ReactiveProcessor {
 
   public static final String POLICY_SOURCE_ORIGINAL_EVENT = "policy.source.originalEvent";
-  public static final String POLICY_STATE_EVENT = "policy.source.beforeNextEvent";
 
   private final Policy policy;
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
@@ -74,19 +75,15 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
     return from(publisher)
         .cast(PrivilegedEvent.class)
-        .map(sourceEvent -> {
-          InternalEvent event = InternalEvent.builder(sourceEvent)
-              // TODO use a quickCopy
-              .addInternalParameter(POLICY_SOURCE_ORIGINAL_EVENT, sourceEvent)
-              .build();
-          return policyEventConverter.createEvent(event, noVariablesEvent(event));
-        })
+        .map(sourceEvent -> PrivilegedEvent
+            .builder(quickCopy(sourceEvent, singletonMap(POLICY_SOURCE_ORIGINAL_EVENT, sourceEvent)))
+            .clearVariables().build())
         .cast(CoreEvent.class)
         .transform(policy.getPolicyChain().onChainError(t -> {
           MessagingException me = (MessagingException) t;
 
           for (Entry<String, ?> entry : ((InternalEvent) me.getEvent()).getInternalParameters().entrySet()) {
-            if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
+            if (POLICY_STATE_EVENT.equals(entry.getKey())) {
               me.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) me.getEvent(),
                                                                     (PrivilegedEvent) entry.getValue()));
               break;
@@ -102,7 +99,4 @@ public class SourcePolicyProcessor implements ReactiveProcessor {
     return ((InternalEvent) event).getInternalParameter(POLICY_SOURCE_ORIGINAL_EVENT);
   }
 
-  private PrivilegedEvent noVariablesEvent(CoreEvent event) {
-    return PrivilegedEvent.builder(event).message(of(null)).clearVariables().build();
-  }
 }

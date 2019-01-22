@@ -6,12 +6,14 @@
  */
 package org.mule.runtime.core.internal.policy;
 
+import static java.util.Collections.singletonMap;
+import static org.mule.runtime.core.internal.event.EventQuickCopy.quickCopy;
 import static org.mule.runtime.core.internal.policy.PolicyNextActionMessageProcessor.POLICY_NEXT_OPERATION;
+import static org.mule.runtime.core.internal.policy.PolicyNextActionMessageProcessor.POLICY_STATE_EVENT;
 import static org.slf4j.LoggerFactory.getLogger;
 import static reactor.core.publisher.Flux.from;
 
 import org.mule.runtime.api.exception.MuleException;
-import org.mule.runtime.api.message.Message;
 import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.policy.Policy;
 import org.mule.runtime.core.api.policy.PolicyChain;
@@ -68,12 +70,15 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
     return from(publisher)
         .map(operationEvent -> {
-          final InternalEvent eventToUse = InternalEvent.builder(operationEvent)
-              // TODO use a quickCopy
-              .addInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT, operationEvent)
-              .build();
+          final InternalEvent eventToUse =
+              quickCopy(operationEvent, singletonMap(POLICY_OPERATION_ORIGINAL_EVENT, operationEvent));
 
-          return policyEventConverter.createEvent(eventToUse, variablesProvider(eventToUse));
+          PrivilegedEvent latestPolicyState = eventToUse.getInternalParameter(POLICY_STATE_EVENT);
+          if (latestPolicyState != null) {
+            return policyEventConverter.createEvent(eventToUse, latestPolicyState);
+          } else {
+            return PrivilegedEvent.builder(eventToUse).clearVariables().build();
+          }
         })
         .doOnNext(event -> logPolicy(event.getContext().getCorrelationId(), policy.getPolicyId(),
                                      () -> getMessageAttributesAsString(event), "Before operation"))
@@ -93,25 +98,14 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
   }
 
   private void manageError(MessagingException messagingException) {
-    saveState((PrivilegedEvent) messagingException.getEvent());
-    PrivilegedEvent newEvent = policyEventConverter
-        .createEvent(saveState((PrivilegedEvent) messagingException.getEvent()), ((InternalEvent) messagingException.getEvent())
-            .getInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT));
-    messagingException.setProcessedEvent(newEvent);
+    messagingException
+        .setProcessedEvent(policyEventConverter.createEvent(saveState((PrivilegedEvent) messagingException.getEvent()),
+                                                            ((InternalEvent) messagingException.getEvent())
+                                                                .getInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT)));
   }
 
   private PrivilegedEvent saveState(PrivilegedEvent event) {
-    return InternalEvent.builder(event)
-        // TODO use a quickCopy
-        .addInternalParameter(SourcePolicyProcessor.POLICY_STATE_EVENT, event)
-        .build();
-  }
-
-  private PrivilegedEvent variablesProvider(CoreEvent event) {
-    PrivilegedEvent latestPolicyState =
-        ((InternalEvent) event).getInternalParameter(SourcePolicyProcessor.POLICY_STATE_EVENT);
-    return latestPolicyState != null ? latestPolicyState
-        : PrivilegedEvent.builder(event).message(Message.of(null)).clearVariables().build();
+    return quickCopy(event, singletonMap(POLICY_STATE_EVENT, event));
   }
 
   private String getMessageAttributesAsString(CoreEvent event) {
