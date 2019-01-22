@@ -15,7 +15,6 @@ import org.mule.runtime.api.message.Message;
 import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.policy.Policy;
 import org.mule.runtime.core.api.policy.PolicyChain;
-import org.mule.runtime.core.api.policy.PolicyStateHandler;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.internal.exception.MessagingException;
@@ -36,8 +35,8 @@ import java.util.function.Supplier;
  * {@link Processor}.
  * <p>
  * This class enforces the scoping of variables between the actual behaviour and the policy that may be applied to it. To enforce
- * such scoping of variables it uses {@link PolicyStateHandler} so the last {@link CoreEvent} modified by the policy behaviour can
- * be stored and retrieve for later usages. It also uses {@link PolicyEventConverter} as a helper class to convert an
+ * such scoping of variables it uses internal parameters so the last {@link CoreEvent} modified by the policy behaviour can be
+ * stored and retrieve for later usages. It also uses {@link PolicyEventConverter} as a helper class to convert an
  * {@link CoreEvent} from the policy to the next operation {@link CoreEvent} or from the next operation result to the
  * {@link CoreEvent} that must continue the execution of the policy.
  * <p>
@@ -51,12 +50,10 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
   private final Policy policy;
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
   private final ReactiveProcessor nextProcessor;
-  private final PolicyStateIdFactory stateIdFactory;
 
   public OperationPolicyProcessor(Policy policy, ReactiveProcessor nextProcessor) {
     this.policy = policy;
     this.nextProcessor = nextProcessor;
-    this.stateIdFactory = new PolicyStateIdFactory(policy.getPolicyId());
   }
 
   /**
@@ -84,9 +81,12 @@ public class OperationPolicyProcessor implements ReactiveProcessor {
         .transform(policy.getPolicyChain().onChainError(t -> manageError((MessagingException) t)))
         .subscriberContext(ctx -> ctx.put(POLICY_NEXT_OPERATION, nextProcessor))
         .cast(PrivilegedEvent.class)
-        .doOnNext(policyChainResult -> saveState(policyChainResult))
-        .map(policyChainResult -> policyEventConverter.createEvent(policyChainResult, ((InternalEvent) policyChainResult)
-            .getInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT)))
+        .map(policyChainResult -> {
+          final PrivilegedEvent savedResult = saveState(policyChainResult);
+          return policyEventConverter.createEvent(savedResult,
+                                                  ((InternalEvent) savedResult)
+                                                      .getInternalParameter(POLICY_OPERATION_ORIGINAL_EVENT));
+        })
         .doOnNext(event -> logPolicy(event.getContext().getCorrelationId(), policy.getPolicyId(),
                                      () -> getMessageAttributesAsString(event), "After operation"))
         .cast(CoreEvent.class);

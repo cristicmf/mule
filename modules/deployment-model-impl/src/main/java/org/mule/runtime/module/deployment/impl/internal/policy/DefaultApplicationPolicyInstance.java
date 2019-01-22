@@ -11,7 +11,6 @@ import static org.mule.runtime.api.i18n.I18nMessageFactory.createStaticMessage;
 import static org.mule.runtime.api.store.ObjectStoreManager.BASE_IN_MEMORY_OBJECT_STORE_KEY;
 import static org.mule.runtime.api.store.ObjectStoreManager.BASE_PERSISTENT_OBJECT_STORE_KEY;
 import static org.mule.runtime.core.api.config.MuleProperties.OBJECT_LOCK_PROVIDER;
-import static org.mule.runtime.core.api.config.MuleProperties.OBJECT_POLICY_MANAGER_STATE_HANDLER;
 import static org.mule.runtime.core.api.config.MuleProperties.OBJECT_TIME_SUPPLIER;
 import static org.mule.runtime.core.api.config.bootstrap.ArtifactType.POLICY;
 import static org.mule.runtime.module.deployment.impl.internal.artifact.ArtifactContextBuilder.newBuilder;
@@ -117,13 +116,6 @@ public class DefaultApplicationPolicyInstance implements ApplicationPolicyInstan
 
     artifactBuilder.withServiceConfigurator(customizationService -> {
       Registry applicationRegistry = application.getRegistry();
-      /*
-       * OBJECT_POLICY_MANAGER_STATE_HANDLER is not proxied as it doesn't implement any lifecycle interfaces (Startable, Stoppable
-       * or Disposable)
-       */
-      customizationService.overrideDefaultServiceImpl(OBJECT_POLICY_MANAGER_STATE_HANDLER,
-                                                      applicationRegistry.lookupByName(OBJECT_POLICY_MANAGER_STATE_HANDLER)
-                                                          .get());
       customizationService.overrideDefaultServiceImpl(OBJECT_LOCK_PROVIDER,
                                                       createLifecycleFilterProxy(applicationRegistry
                                                           .lookupByName(OBJECT_LOCK_PROVIDER).get()));

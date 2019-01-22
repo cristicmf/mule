@@ -6,34 +6,30 @@
  */
 package org.mule.runtime.core.internal.policy;
 
-import static org.mule.runtime.api.i18n.I18nMessageFactory.createStaticMessage;
 import static org.mule.runtime.api.notification.PolicyNotification.AFTER_NEXT;
 import static org.mule.runtime.api.notification.PolicyNotification.BEFORE_NEXT;
 import static org.mule.runtime.core.privileged.processor.MessageProcessors.processToApply;
 import static org.slf4j.LoggerFactory.getLogger;
-import static reactor.core.publisher.Mono.error;
+import static reactor.core.publisher.Flux.from;
 import static reactor.core.publisher.Mono.just;
+import static reactor.core.publisher.Mono.subscriberContext;
 
 import org.mule.runtime.api.component.AbstractComponent;
-import org.mule.runtime.api.component.Component;
 import org.mule.runtime.api.component.TypedComponentIdentifier;
 import org.mule.runtime.api.component.location.ComponentLocation;
 import org.mule.runtime.api.event.EventContext;
 import org.mule.runtime.api.exception.MuleException;
-import org.mule.runtime.api.exception.MuleRuntimeException;
 import org.mule.runtime.api.lifecycle.Initialisable;
 import org.mule.runtime.api.lifecycle.InitialisationException;
 import org.mule.runtime.api.message.Message;
 import org.mule.runtime.core.api.MuleContext;
 import org.mule.runtime.core.api.context.notification.FlowStackElement;
 import org.mule.runtime.core.api.event.CoreEvent;
-import org.mule.runtime.core.api.policy.PolicyStateId;
 import org.mule.runtime.core.api.processor.Processor;
 import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.internal.context.notification.DefaultFlowCallStack;
 import org.mule.runtime.core.internal.exception.MessagingException;
 import org.mule.runtime.core.internal.message.InternalEvent;
-import org.mule.runtime.core.internal.util.MessagingExceptionResolver;
 import org.mule.runtime.core.privileged.event.PrivilegedEvent;
 
 import org.reactivestreams.Publisher;
@@ -41,13 +37,9 @@ import org.slf4j.Logger;
 
 import java.util.Map.Entry;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Predicate;
 
 import javax.inject.Inject;
-
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 /**
  * Next-operation message processor implementation.
@@ -69,8 +61,6 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
   private PolicyNotificationHelper notificationHelper;
 
   private final PolicyEventConverter policyEventConverter = new PolicyEventConverter();
-
-  private PolicyStateIdFactory stateIdFactory;
 
   @Override
   public CoreEvent process(CoreEvent event) throws MuleException {
@@ -95,53 +85,39 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
 
 
-    return Flux.from(publisher)
+    return from(publisher)
         .doOnNext(coreEvent -> logExecuteNextEvent("Before execute-next", coreEvent.getContext(),
                                                    coreEvent.getMessage(), muleContext.getConfiguration().getId()))
         .map(event -> (CoreEvent) policyEventConverter.createEvent(saveState((PrivilegedEvent) event),
                                                                    getOriginalEvent(event)))
-        .doOnNext(a -> {
-        })
-        .flatMap(event -> {
-          return Mono.subscriberContext().flatMap(ctx -> {
-            PolicyStateId policyStateId = stateIdFactory.create(event);
+        .flatMap(event -> subscriberContext().flatMap(ctx -> {
+          ReactiveProcessor nextOperation = ctx.get(POLICY_NEXT_OPERATION);
 
-            ReactiveProcessor nextOperation = ctx.get(POLICY_NEXT_OPERATION);
+          popBeforeNextFlowFlowStackElement().accept(event);
+          notificationHelper.notification(BEFORE_NEXT).accept(event);
 
-            if (nextOperation == null) {
-              return error(new MuleRuntimeException(createStaticMessage("There's no next operation configured for event context id "
-                  + policyStateId.getExecutionIdentifier())));
-            }
+          return just(event)
+              .transform(nextOperation)
+              .doOnSuccess(ev -> {
+                // In the case of multiple policies and error handling, ev may be null,
+                // So use the original event here.
+                notificationHelper.fireNotification(event, null, AFTER_NEXT);
+                pushAfterNextFlowStackElement().accept(event);
+              })
+              .onErrorMap(MessagingException.class, t -> {
+                notificationHelper.fireNotification(t.getEvent(), t, AFTER_NEXT);
+                pushAfterNextFlowStackElement().accept(t.getEvent());
 
-            popBeforeNextFlowFlowStackElement().accept(event);
-            notificationHelper.notification(BEFORE_NEXT).accept(event);
-
-            return just(event)
-                .transform(nextOperation)
-                .doOnSuccess(ev -> {
-                  // In the case of multiple policies and error handling, ev may be null,
-                  // So use the original event here.
-                  notificationHelper.fireNotification(event, null, AFTER_NEXT);
-                  pushAfterNextFlowStackElement().accept(event);
-                })
-                .onErrorMap(MessagingException.class, t -> {
-                  notificationHelper.fireNotification(t.getEvent(), t, AFTER_NEXT);
-                  pushAfterNextFlowStackElement().accept(t.getEvent());
-
-                  for (Entry<String, ?> entry : ((InternalEvent) t.getEvent()).getInternalParameters().entrySet()) {
-                    if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
-                      t.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) t.getEvent(),
-                                                                           (PrivilegedEvent) entry.getValue()));
-                      break;
-                    }
+                for (Entry<String, ?> entry : ((InternalEvent) t.getEvent()).getInternalParameters().entrySet()) {
+                  if (SourcePolicyProcessor.POLICY_STATE_EVENT.equals(entry.getKey())) {
+                    t.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) t.getEvent(),
+                                                                         (PrivilegedEvent) entry.getValue()));
+                    break;
                   }
-                  return t;
-                });
-          });
-
-
-
-        })
+                }
+                return t;
+              });
+        }))
         .doOnNext(coreEvent -> logExecuteNextEvent("After execute-next",
                                                    coreEvent.getContext(), coreEvent.getMessage(),
                                                    this.muleContext.getConfiguration().getId()))
@@ -176,21 +152,10 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
         && "http-policy".equals(id.getIdentifier().getNamespace());
   }
 
-  private Function<MessagingException, MessagingException> resolveMessagingException(Component processor,
-                                                                                     MuleContext muleContext) {
-    if (processor != null) {
-      MessagingExceptionResolver exceptionResolver = new MessagingExceptionResolver(processor);
-      return exception -> exceptionResolver.resolve(exception, muleContext);
-    } else {
-      return exception -> exception;
-    }
-  }
-
   @Override
   public void initialise() throws InitialisationException {
     notificationHelper =
         new PolicyNotificationHelper(muleContext.getNotificationManager(), muleContext.getConfiguration().getId(), this);
-    stateIdFactory = new PolicyStateIdFactory(muleContext.getConfiguration().getId());
   }
 
   private void logExecuteNextEvent(String startingMessage, EventContext eventContext, Message message, String policyName) {
