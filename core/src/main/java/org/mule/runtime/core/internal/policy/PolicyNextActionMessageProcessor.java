@@ -15,7 +15,6 @@ import static org.mule.runtime.core.internal.policy.SourcePolicyProcessor.POLICY
 import static org.mule.runtime.core.privileged.processor.MessageProcessors.processToApply;
 import static org.slf4j.LoggerFactory.getLogger;
 import static reactor.core.publisher.Flux.from;
-import static reactor.core.publisher.Mono.just;
 import static reactor.core.publisher.Mono.subscriberContext;
 
 import org.mule.runtime.api.component.AbstractComponent;
@@ -29,7 +28,6 @@ import org.mule.runtime.core.api.MuleContext;
 import org.mule.runtime.core.api.context.notification.FlowStackElement;
 import org.mule.runtime.core.api.event.CoreEvent;
 import org.mule.runtime.core.api.processor.Processor;
-import org.mule.runtime.core.api.processor.ReactiveProcessor;
 import org.mule.runtime.core.internal.context.notification.DefaultFlowCallStack;
 import org.mule.runtime.core.internal.exception.MessagingException;
 import org.mule.runtime.core.internal.message.InternalEvent;
@@ -38,10 +36,11 @@ import org.mule.runtime.core.privileged.event.PrivilegedEvent;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 
-import java.util.Map.Entry;
 import java.util.function.Consumer;
 
 import javax.inject.Inject;
+
+import reactor.core.publisher.Mono;
 
 /**
  * Next-operation message processor implementation.
@@ -95,22 +94,17 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
           popBeforeNextFlowFlowStackElement().accept(event);
           notificationHelper.notification(BEFORE_NEXT).accept(event);
         })
-        .zipWith(subscriberContext().map(ctx -> ctx.get(POLICY_NEXT_OPERATION)))
-        .flatMap(event -> just(event.getT1())
-            .transform((ReactiveProcessor) event.getT2())
-            .onErrorMap(MessagingException.class, t -> {
-              notificationHelper.fireNotification(t.getEvent(), t, AFTER_NEXT);
-              pushAfterNextFlowStackElement().accept(t.getEvent());
 
-              for (Entry<String, ?> entry : ((InternalEvent) t.getEvent()).getInternalParameters().entrySet()) {
-                if (POLICY_STATE_EVENT.equals(entry.getKey())) {
-                  t.setProcessedEvent(policyEventConverter.createEvent((PrivilegedEvent) t.getEvent(),
-                                                                       (PrivilegedEvent) entry.getValue()));
-                  break;
-                }
-              }
-              return t;
-            }))
+        .flatMap(event -> subscriberContext().flatMap(ctx -> Mono.just(event).transform(ctx.get(POLICY_NEXT_OPERATION)))
+            .cast(CoreEvent.class)
+            .doOnError(MessagingException.class, this::handleExceptionInNext))
+
+        // TODO MULE-16371 Replace the flatMap above with this compose. Review how to handle the error from the flow in source
+        // policies (this is covered in test cases).
+        // .compose(eventPub -> subscriberContext().flatMapMany(ctx -> eventPub.transform(ctx.get(POLICY_NEXT_OPERATION))
+        //// .doOnError(MessagingException.class, me -> handleExceptionInNext(me))
+        // ))
+
         .doOnNext(coreEvent -> {
           notificationHelper.fireNotification(coreEvent, null, AFTER_NEXT);
           pushAfterNextFlowStackElement().accept(coreEvent);
@@ -119,6 +113,15 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
         })
         .map(result -> (CoreEvent) policyEventConverter.createEvent((PrivilegedEvent) result,
                                                                     loadState((PrivilegedEvent) result)));
+  }
+
+  private void handleExceptionInNext(MessagingException me) {
+    notificationHelper.fireNotification(me.getEvent(), me, AFTER_NEXT);
+    pushAfterNextFlowStackElement().accept(me.getEvent());
+
+    me.setProcessedEvent(policyEventConverter
+        .createEvent((PrivilegedEvent) me.getEvent(),
+                     loadState((PrivilegedEvent) me.getEvent())));
   }
 
   private PrivilegedEvent getOriginalEvent(CoreEvent event) {
@@ -151,5 +154,4 @@ public class PolicyNextActionMessageProcessor extends AbstractComponent implemen
           + "\n" + message.getAttributes().getValue().toString());
     }
   }
-
 }

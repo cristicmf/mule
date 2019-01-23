@@ -118,19 +118,19 @@ public class PolicyChain extends AbstractComponent
   @Override
   public Publisher<CoreEvent> apply(Publisher<CoreEvent> publisher) {
     return Flux.from(publisher)
+        .doOnNext(pushBeforeNextFlowStackElement()
+            .andThen(req -> ((BaseEventContext) req.getContext())
+                .onResponse((resp, t) -> popFlowFlowStackElement().accept(req)))
+            .andThen(notificationHelper.notification(PROCESS_START)))
+        // TODO MULE-16370 remove this flatMap
         .flatMap(event -> {
-          pushBeforeNextFlowStackElement()
-              .andThen(req -> ((BaseEventContext) req.getContext())
-                  .onResponse((resp, t) -> popFlowFlowStackElement().accept(req)))
-              .andThen(notificationHelper.notification(PROCESS_START))
-              .accept(event);
           return from(processWithChildContext(event, chainWithMPs, ofNullable(getLocation())))
-              .doOnNext(e -> notificationHelper.fireNotification(e, null, PROCESS_END))
               .doOnError(MessagingException.class, t -> {
                 notificationHelper.fireNotification(t.getEvent(), t, PROCESS_END);
                 this.onError.ifPresent(onError -> onError.accept(t));
               });
-        });
+        })
+        .doOnNext(e -> notificationHelper.fireNotification(e, null, PROCESS_END));
   }
 
   private Consumer<CoreEvent> pushBeforeNextFlowStackElement() {
